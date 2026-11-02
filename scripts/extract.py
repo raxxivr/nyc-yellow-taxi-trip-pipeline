@@ -39,11 +39,8 @@ def download_csv(url, filename):
   return save_path
 
 if __name__ == "__main__":
-  """csv_url = "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv"
+  csv_url = "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv"
   parquet_url = "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2026-09.parquet"
 
   download_parquet(parquet_url, "yellow_tripdata_2026-09.parquet")
-  download_csv(csv_url, "taxi_zone_lookup.csv")"""
-
-  df = pd.read_csv("data/raw/taxi_zone_lookup.csv")
-  print(df.shape[0]) 
+  download_csv(csv_url, "taxi_zone_lookup.csv")
