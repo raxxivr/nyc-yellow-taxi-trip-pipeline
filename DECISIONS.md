@@ -1,7 +1,7 @@
 # Decision Log
 
 Project: NYC Yellow Taxi Trip Pipeline
-Last updated: 2026-11-03
+Last updated: 2026-11-07
 
 Each entry records the context, alternatives, choice, and consequences. Status
 and setup live in `README.md`; this file is only the reasoning behind decisions.
@@ -119,3 +119,211 @@ predictable identifiers without sacrificing source fidelity.
 Raw SQL must quote mixed-case columns until the clean layer exists, and the
 rename mapping becomes maintenance work whenever TLC changes its schema. The
 inconsistency is contained to `raw` rather than spreading downstream.
+
+---
+
+## D-04: Count each rejected row under the first rule it fails
+
+**Date:** 2026-11-07
+
+**Status:** Accepted
+
+**Context**
+The profile counts are independent. A negative fare can also have an invalid
+timestamp, so adding the individual counts would overstate the number of bad
+rows and fail to reconcile against the raw input.
+
+**Options considered**
+1. **Log independent counts** — each rule reports every row it would reject,
+   even if another rule also rejects it. Useful for profiling, but the counts
+   cannot be added.
+2. **Log sequential counts** — apply rules in a fixed order and count a row only
+   under the first rule it fails.
+3. **Log both** — keep independent profile counts as evidence and sequential
+   counts as the pipeline result.
+
+**Decision**
+Run the rules in this fixed order and log the sequential count for each:
+
+1. Missing required fields
+2. Pickup outside September 2026
+3. Dropoff not after pickup
+4. Duration over 12 hours
+5. Non-positive fare
+6. Non-positive distance
+7. Implied speed over 100 mph
+8. High-fare anomaly
+9. Duplicate trip
+
+The transform asserts `raw rows = clean rows + total rejected rows`.
+
+**Why**
+Sequential accounting gives every rejected row exactly one owner and makes the
+final reconciliation meaningful. The fixed order also makes reruns comparable.
+
+**Tradeoffs**
+The rule that gets blamed for a row depends on order. For example, a negative
+fare with an invalid timestamp is counted under the timestamp rule. The profile
+therefore keeps independent counts for diagnosis, while the pipeline log uses
+sequential counts for reconciliation.
+
+---
+
+## D-05: Define a duplicate trip by a natural key with a deterministic tie-break
+
+**Date:** 2026-11-07
+
+**Status:** Accepted
+
+**Context**
+The TLC data has no trip ID, so "duplicate" must be defined. Exact duplicate
+rows do not occur (0), but repeated trip records do. The original key
+`VendorID + pickup + PULocationID` removes 188,650 rows and is too weak: it
+collapses different trips that start in the same zone at the same second.
+
+**Options considered**
+1. **Exact full-row duplicates** — removes 0 rows; misses repeated records that
+   differ only in optional vendor fields.
+2. **Weak natural key** — removes 188,650 rows and destroys legitimate trips.
+3. **Full natural key** — `VendorID + pickup + dropoff + PULocationID +
+   DOLocationID + fare_amount + trip_distance + total_amount`; removes 25,349
+   rows before other rules and 24,315 after them.
+4. **Full natural key plus arbitrary row order** — same key, but which copy
+   survives is nondeterministic.
+
+**Decision**
+Use option 3. Sort by the key and all remaining columns, then keep the first row
+in each duplicate group. The resulting duplicate-key count must be 0.
+
+**Why**
+The 25,349 recommended-key groups are pairs. The copies share the trip's
+identity, fare, distance, and total, but differ in `passenger_count`,
+`payment_type`, and `request_source`. That looks like duplicate reporting, not
+two separate trips. Sorting all columns makes reruns select the same survivor.
+
+**Tradeoffs**
+Two legitimate trips with identical values for every key field would still be
+collapsed. The key is a judgment call; it is stronger than the original and
+weaker than full-row equality. Revisit it if TLC adds a trip identifier.
+
+---
+
+## D-06: Left-join zones and keep sentinel locations
+
+**Date:** 2026-11-07
+
+**Status:** Accepted
+
+**Context**
+`taxi_zone_lookup` has 265 rows and a unique `LocationID`. Every trip location
+ID matches the lookup, including sentinel locations 264 and 265. Location 264
+has Borough `Unknown` and a null Zone; location 265 has a null Borough and Zone
+`Outside of NYC`.
+
+**Options considered**
+1. **Inner join** — drops trips with unknown IDs in future data and provides no
+   benefit on this snapshot.
+2. **Left join** — keeps every trip and adds zone labels where available.
+3. **Left join, then drop sentinel-zone trips** — removes 264/265 as "unknown",
+   but those are real source categories and dropping them loses valid trips.
+
+**Decision**
+Left-join the lookup twice, once on `pickup_location_id` and once on
+`dropoff_location_id`. Keep sentinel trips and preserve the lookup labels:
+264 becomes a null zone with borough `Unknown`; 265 becomes zone
+`Outside of NYC` with a null borough. No rows are dropped by the join.
+
+**Why**
+The join should enrich, not filter. The lookup is unique, so a left join cannot
+fan out rows, and unresolved zone names stay visible as nulls rather than
+silently disappearing.
+
+**Tradeoffs**
+`clean.trips` contains null zone names for location 264 and null boroughs for
+location 265. Analytics must treat those as sentinel/unknown values and not as
+ordinary neighborhoods.
+
+---
+
+## D-07: Rebuild `clean.trips` on every transform run
+
+**Date:** 2026-11-07
+
+**Status:** Accepted
+
+**Context**
+The transform may be rerun while developing. It must be idempotent: two runs
+over the same raw snapshot must produce the same clean table, not append a
+second copy.
+
+**Options considered**
+1. **Append** — simple, but reruns duplicate every row.
+2. **Truncate + insert** — preserves a pre-created table and indexes, but needs
+   separate DDL that can drift from the DataFrame.
+3. **Replace the table** — drop and recreate `clean.trips` from the transformed
+   DataFrame on each run.
+4. **Staging table + swap** — safest for concurrent readers, but more machinery
+   than this single-user batch pipeline needs now.
+
+**Decision**
+Replace `clean.trips` on each run. Create the table from the DataFrame schema,
+then load rows with PostgreSQL `COPY` through a temporary CSV file. Verify the
+written count before declaring success.
+
+**Why**
+Replace gives an exact snapshot and makes idempotency trivial. `COPY` avoids the
+row-by-row insert cost of `DataFrame.to_sql` at 3.6M rows.
+
+**Tradeoffs**
+The table is unavailable during a rebuild, and indexes, grants, comments, or
+views attached to it are lost. Schema types are inferred from pandas. A failed
+load can leave an empty table, so rerun the transform before consuming it. A
+staging swap is the next step if concurrent readers or indexes become required.
+
+---
+
+## D-08: Use profile-derived validity thresholds
+
+**Date:** 2026-11-07
+
+**Status:** Accepted
+
+**Context**
+The profile found extreme values that are almost certainly errors, but a flat
+cap on fare or distance would also remove plausible long trips.
+
+**Options considered**
+1. **No cleaning** — preserves everything, but leaves impossible timestamps,
+   negative fares, zero distances, and duplicate records in `clean`.
+2. **Flat caps** — easy to explain, but rejects legitimate long airport/out-of-
+   town trips along with bad rows.
+3. **Profile-derived rules** — reject values that are invalid by construction or
+   implausible relative to the trip, and keep values that are merely unusual.
+
+**Decision**
+Use these rules:
+
+- Pickup must be in `[2026-09-01, 2026-10-01)`.
+- Dropoff must be strictly after pickup.
+- Duration must be at most 12 hours.
+- `fare_amount` must be greater than 0.
+- `trip_distance` must be greater than 0.
+- Implied speed must be at most 100 mph.
+- Reject high-fare anomalies only when `fare_amount > 500` **and**
+  `fare_amount / trip_distance > 30`.
+- Do not impose a flat upper distance cap.
+- Do not reject zero passenger counts or null optional fields.
+- Do not drop sentinel zones.
+
+**Why**
+Zero duration, negative fare, and zero distance are unusable by construction.
+The 12-hour and 100-mph limits are far beyond the observed normal range but
+still retain plausible long trips. The fare-per-mile test distinguishes a $990
+trip of 0.21 miles from a $900 trip of 122 miles. This produced 3,641,416 clean
+rows from 3,876,044 raw rows, with 234,628 rejected under the sequential log.
+
+**Tradeoffs**
+The thresholds are data-driven judgment calls. A genuine 13-hour trip or a trip
+above 100 mph would be rejected, and the 12-hour limit is stricter than the
+profile's 99.9th percentile. The rules also leave rare high fares that are
+proportional to distance, so downstream analysis should still inspect outliers.

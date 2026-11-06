@@ -5,14 +5,15 @@ taxi zone lookup, loads them into PostgreSQL, and prepares them for analysis.
 
 ## Status
 
-M1 is complete: both source files load into the `raw` schema and row counts are
-validated. Transformation into `clean` and `analytics` is planned for M2.
+M1 and M2 are complete: both source files load into the `raw` schema, and
+`scripts/transform.py` builds an idempotent, zone-enriched `clean.trips` table.
+Analytics models are planned for M3.
 
 | Area | State |
 |---|---|
 | Extract | Downloads the monthly parquet and zone lookup CSV to `data/raw/` |
 | Raw load | Loads both files into Postgres `raw` schema |
-| Transform | Not started (`scripts/transform.py` is empty) |
+| Transform | Cleans `raw` trips, joins pickup/dropoff zones, rebuilds `clean.trips` |
 | Orchestration | None; scripts run individually |
 
 ## Stack
@@ -51,11 +52,20 @@ The loader creates the `raw`, `clean`, and `analytics` schemas, replaces the
 raw tables, and fails with a `ValueError` if a loaded row count differs from the
 source file.
 
+Transform the raw tables into `clean.trips`:
+
+```powershell
+python scripts/transform.py
+```
+
+The transform logs rejected rows by rule, reconciles raw and clean counts, and
+rebuilds `clean.trips` from scratch so reruns do not create duplicates.
+
 ## Layout
 
 ```text
 scripts/extract.py    # download TLC files to data/raw/
-scripts/transform.py  # clean raw data into clean schema (M2)
+scripts/transform.py  # clean raw tables and build clean.trips
 scripts/load.py       # load raw files, validate counts
 data/raw/             # downloaded source files (gitignored)
 DECISIONS.md          # decision log
@@ -63,10 +73,11 @@ DECISIONS.md          # decision log
 
 ## Known Gaps
 
-- `transform.py`, `main.py`, and analytics models are not implemented.
-- No automated tests; row-count validation runs only during `load.py`.
+- `main.py` and analytics models are not implemented.
+- No automated tests; count checks run during `load.py` and `transform.py`.
 - Dataset is hardcoded to September 2026.
 - Full-refresh loads only; no incremental or append strategy.
+- `clean.trips` has no indexes or constraints yet.
 
 ## Decisions
 
