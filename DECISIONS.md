@@ -352,3 +352,76 @@ rejected, so it still counts toward revenue. The thresholds remain data-driven
 judgment calls: a genuine 13-hour trip or a trip above 100 mph would be
 rejected, and the 12-hour limit is stricter than the profile's 99.9th
 percentile.
+
+---
+
+## D-09: Report gross revenue as `total_amount`, with fare and tips separate
+
+**Date:** 2026-11-08
+
+**Status:** Accepted
+
+**Context**
+`total_amount` includes the base fare, tips, taxes, tolls, and surcharges.
+`fare_amount` is only the metered fare. The business question asks for
+“revenue,” which could mean either one.
+
+**Options considered**
+1. **Use only `fare_amount`** — clear metered fare, but omits tips and
+   pass-through charges.
+2. **Use only `total_amount`** — closest to the amount charged, but hides the
+   fare/tip split.
+3. **Report all three** — gross revenue from `total_amount`, plus
+   `fare_revenue` and `tip_revenue` as separate columns.
+
+**Decision**
+Use option 3. `analytics.daily_trips_revenue` reports `gross_revenue` as
+`SUM(total_amount)`, `fare_revenue` as `SUM(fare_amount)`, and `tip_revenue` as
+`SUM(tip_amount)`.
+
+**Why**
+The analyst can see the total charged without losing the fare/tip breakdown.
+Naming the columns explicitly prevents a hidden “revenue” definition.
+
+**Tradeoffs**
+Gross revenue includes pass-through taxes, tolls, and surcharges, and it is
+reduced by negative adjustments in `total_amount`; it is not net profit. If the
+business wants metered fare only, `fare_revenue` is available.
+
+---
+
+## D-10: Use a card-only tip denominator and explicit labels
+
+**Date:** 2026-11-08
+
+**Status:** Accepted
+
+**Context**
+TLC records tips reliably only for card payments, so averaging over all trips
+would bias the result downward. Zone 264 has a null zone name, and payment
+types are stored as numeric codes.
+
+**Options considered**
+1. **Average tips over every trip** — simple, but misleading because cash tips
+   are not recorded.
+2. **Average tips over card trips only** — consistent denominator for recorded
+   tips.
+3. **Store payment labels in a lookup table** — reusable, but unnecessary for a
+   single query.
+4. **Map labels with `CASE` and label sentinel zones explicitly** — simple and
+   readable.
+
+**Decision**
+Use card trips (`payment_type = 1`) as the tip denominator. Label zone 264 as
+`Unknown (264)`. Map payment types with a `CASE`: 0 Flex Fare, 1 Credit card,
+2 Cash, 3 No charge, 4 Dispute, 5 Unknown, 6 Voided trip, and `Other` for any
+unexpected code.
+
+**Why**
+The denominator matches the population where tips are actually recorded, and
+explicit labels stop nulls and numeric codes from being silently misinterpreted.
+
+**Tradeoffs**
+The tip averages are not representative of cash trips. The `CASE` mapping must
+be updated if TLC changes its codes. In this month's data, only codes 0–5
+appear; code 6 is handled but has no rows.
