@@ -1,0 +1,9 @@
+analytics.trips_by_payment_type: 6 rows
+
+ payment_type payment_label  trip_count  pct_of_trips
+            1   Credit card     2288460         60.47
+            0     Flex Fare     1163844         30.75
+            2          Cash      311082          8.22
+            4       Dispute       12824          0.34
+            3     No charge        8395          0.22
+            5       Unknown           2          0.00

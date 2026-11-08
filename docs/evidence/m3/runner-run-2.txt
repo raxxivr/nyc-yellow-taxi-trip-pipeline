@@ -1,0 +1,16 @@
+Successfully created table: analytics.daily_trips_revenue
+Successfully created table: analytics.top_pickup_zones
+Successfully created table: analytics.avg_tip_by_hour
+Successfully created table: analytics.trips_by_payment_type
+
+All analytics tables built successfully within a single transaction.
+
+Sanity checks
+--------------------------------------------
+PASS: daily has 30 rows
+PASS: daily trips match clean.trips
+PASS: top zones has 10 labeled rows
+PASS: tips cover 24 hours with non-negative averages
+PASS: payment percentages total 100
+PASS: payment trips match clean.trips
+All sanity checks passed.

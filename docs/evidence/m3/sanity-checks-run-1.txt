@@ -1,0 +1,9 @@
+Sanity checks
+--------------------------------------------
+PASS: daily has 30 rows
+PASS: daily trips match clean.trips
+PASS: top zones has 10 labeled rows
+PASS: tips cover 24 hours with non-negative averages
+PASS: payment percentages total 100
+PASS: payment trips match clean.trips
+All sanity checks passed.

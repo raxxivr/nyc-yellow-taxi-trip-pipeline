@@ -1,0 +1,13 @@
+analytics.top_pickup_zones: 10 rows
+
+ pickup_location_id pickup_borough                   zone_label  trip_count  pct_of_total
+                237      Manhattan        Upper East Side South      167015          4.41
+                236      Manhattan        Upper East Side North      149144          3.94
+                132         Queens                  JFK Airport      148187          3.92
+                161      Manhattan               Midtown Center      141197          3.73
+                186      Manhattan Penn Station/Madison Sq West      116489          3.08
+                162      Manhattan                 Midtown East      107962          2.85
+                142      Manhattan          Lincoln Square East      107780          2.85
+                 68      Manhattan                 East Chelsea      103642          2.74
+                 79      Manhattan                 East Village      102337          2.70
+                230      Manhattan    Times Sq/Theatre District      101548          2.68
