@@ -8,7 +8,8 @@ tables, and runs automated quality checks.
 ## Status
 
 M1 through M4 are complete. The extract, load, transform, analytics, and quality
-check stages are wired together in `run_pipeline.py`.
+check stages are wired together in `run_pipeline.py`; a fresh-clone run was
+verified end to end.
 
 ## Problem
 
@@ -167,6 +168,9 @@ The loader also validates raw row counts, and the transform prints every
 cleaning rule with its rejection count and validates raw-to-clean
 reconciliation. Any failing check stops `run_pipeline.py` with a non-zero exit
 code.
+
+M4 run logs, quality-check results, and fresh-clone verification are in
+`docs/evidence/m4/`.
 
 ## Reruns and raw data
 
