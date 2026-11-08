@@ -1,4 +1,5 @@
 import os
+import tempfile
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -29,17 +30,50 @@ def create_schema():
         conn.commit()
 
 
+def load_dataframe_to_raw(df, table_name):
+    """Replace a raw table and load the rows with PostgreSQL COPY."""
+    print(f"Loading to Postgres as raw.{table_name}...")
+
+    # Create the table from the DataFrame schema, then stream rows with COPY.
+    df.head(0).to_sql(
+        name=table_name,
+        con=engine,
+        schema="raw",
+        if_exists="replace",
+        index=False,
+    )
+
+    raw_connection = engine.raw_connection()
+    try:
+        copy_sql = (
+            f"COPY raw.{table_name} "
+            "FROM STDIN WITH (FORMAT CSV, HEADER TRUE)"
+        )
+        with tempfile.TemporaryFile(
+            mode="w+", encoding="utf-8", newline=""
+        ) as csv_file:
+            df.to_csv(csv_file, index=False, header=True, na_rep="")
+            csv_file.seek(0)
+            with raw_connection.cursor() as cursor:
+                cursor.copy_expert(copy_sql, csv_file)
+        raw_connection.commit()
+    except Exception:
+        raw_connection.rollback()
+        raise
+    finally:
+        raw_connection.close()
+
+    print(f"raw.{table_name} loaded successfully\n")
+    return len(df)
+
+
 def load_csv_to_raw():
     file_path = "data/raw/taxi_zone_lookup.csv"
     table_name = "taxi_zone_lookup"
 
     print(f"Reading {file_path}...")
     df = pd.read_csv(file_path)
-
-    print(f"Loading to Postgres as raw.{table_name}...")
-    df.to_sql(name=table_name, con=engine, schema="raw", if_exists="replace", index=False)
-    print("CSV loaded successfully\n")
-    return len(df)
+    return load_dataframe_to_raw(df, table_name)
 
 
 def load_parquet_to_raw():
@@ -48,19 +82,7 @@ def load_parquet_to_raw():
 
     print(f"Reading {file_path}...")
     df = pd.read_parquet(file_path)
-
-    print(f"Loading to Postgres as raw.{table_name}...")
-    df.to_sql(
-        name=table_name,
-        con=engine,
-        schema="raw",
-        if_exists="replace",
-        index=False,
-        chunksize=10000,
-        method="multi",
-    )
-    print("Parquet loaded successfully\n")
-    return len(df)
+    return load_dataframe_to_raw(df, table_name)
 
 
 def validate_rows(expected_rows):
