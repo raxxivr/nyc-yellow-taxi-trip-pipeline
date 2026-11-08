@@ -142,10 +142,12 @@ def drop_invalid_fares(df):
     return _result(df, cleaned)
 
 
-def drop_invalid_distances(df):
-    """Reject zero and negative trip distances."""
-    cleaned = df.loc[df["trip_distance"] > 0].copy()
-    return _result(df, cleaned)
+def flag_invalid_distance(df):
+    """Flag zero or negative distances instead of dropping the trip."""
+    cleaned = df.copy()
+    cleaned["has_valid_distance"] = cleaned["trip_distance"] > 0
+    flagged = int((~cleaned["has_valid_distance"]).sum())
+    return cleaned, flagged
 
 
 def drop_invalid_speed(df):
@@ -195,7 +197,6 @@ def apply_cleaning_rules(df):
         ("invalid timestamps", drop_invalid_timestamps),
         ("invalid duration", drop_invalid_duration),
         ("invalid fares", drop_invalid_fares),
-        ("invalid distances", drop_invalid_distances),
         ("invalid speed", drop_invalid_speed),
         ("high fares", drop_high_fares),
         ("duplicate trips", drop_duplicate_trips),
@@ -203,7 +204,6 @@ def apply_cleaning_rules(df):
 
     rejected = {}
     for rule_name, rule in rules:
-        before = len(df)
         df, count = rule(df)
         rejected[rule_name] = count
         print(f"{rule_name:<28} rejected {count:>10,} rows")
@@ -216,6 +216,11 @@ def rename_trip_columns(df):
     missing = sorted(set(TRIP_RENAME) - set(df.columns))
     if missing:
         raise KeyError(f"Missing trip columns: {missing}")
+
+    extra = sorted(set(df.columns) - set(TRIP_RENAME))
+    if extra:
+        raise KeyError(f"Unmapped trip columns: {extra}")
+
     return df.rename(columns=TRIP_RENAME)
 
 
@@ -308,7 +313,7 @@ def get_clean_count():
         ).scalar_one()
 
 
-def print_rejection_summary(rejected, raw_count, clean_count):
+def print_rejection_summary(rejected, raw_count, clean_count, distance_flagged):
     total_rejected = sum(rejected.values())
 
     print("\nRejected rows by rule")
@@ -317,6 +322,7 @@ def print_rejection_summary(rejected, raw_count, clean_count):
         print(f"{rule:<28} {count:>10,}")
     print("-" * 44)
     print(f"{'total rejected':<28} {total_rejected:>10,}")
+    print(f"{'zero-distance flagged':<28} {distance_flagged:>10,}")
     print(f"{'raw rows':<28} {raw_count:>10,}")
     print(f"{'clean rows':<28} {clean_count:>10,}")
 
@@ -342,6 +348,9 @@ def main():
     print("\nRenaming columns...")
     clean = rename_trip_columns(clean)
 
+    clean, distance_flagged = flag_invalid_distance(clean)
+    print(f"Flagged {distance_flagged:,} zero-distance trips (kept in clean).")
+
     print("Joining pickup and dropoff zones...")
     clean = enrich_with_zones(clean, zones)
 
@@ -352,7 +361,9 @@ def main():
             f"Clean data still contains {duplicate_count:,} duplicate rows."
         )
 
-    print(f"Writing {len(clean):,} rows to {CLEAN_SCHEMA}.{CLEAN_TABLE}...")
+    print_rejection_summary(rejected, raw_count, len(clean), distance_flagged)
+
+    print(f"\nWriting {len(clean):,} rows to {CLEAN_SCHEMA}.{CLEAN_TABLE}...")
     write_clean_trips(clean)
 
     db_count = get_clean_count()
@@ -362,7 +373,7 @@ def main():
             f"but {db_count:,} in {CLEAN_SCHEMA}.{CLEAN_TABLE}"
         )
 
-    print_rejection_summary(rejected, raw_count, db_count)
+    print(f"Write verified: {db_count:,} rows in {CLEAN_SCHEMA}.{CLEAN_TABLE}.")
     print("\nTransform completed successfully.")
 
 
