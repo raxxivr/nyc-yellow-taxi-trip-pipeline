@@ -1,7 +1,7 @@
 # Decision Log
 
 Project: NYC Yellow Taxi Trip Pipeline
-Last updated: 2026-11-07
+Last updated: 2026-11-08
 
 Each entry records the context, alternatives, choice, and consequences. Status
 and setup live in `README.md`; this file is only the reasoning behind decisions.
@@ -54,8 +54,7 @@ on `raw` objects.
 **Context**
 M1 only lands source files in `raw`. M2 requires filtering, type normalization,
 and joining trips to the zone lookup. That work can run either in the warehouse
-or in application code. An earlier draft said transformation happened "inside
-the warehouse", which conflicted with the plan to clean with pandas.
+or in application code.
 
 **Options considered**
 1. **In-database SQL (ELT)** — load raw, then transform with SQL inside
@@ -71,10 +70,12 @@ Use pandas in `scripts/transform.py`: read from `raw`, transform in Python, and
 write results to the `clean` schema.
 
 **Why**
-The dataset is about 3.9M rows, which fits comfortably in memory on this
-machine. pandas is already a dependency and makes column renaming, filtering,
-and zone joins easy to iterate on and test. Keeping `raw` untouched preserves
-replayability.
+The raw trip frame measured **0.662 GB** with `memory_usage(deep=True)`. Each
+rule calls `.copy()` and temporarily holds a second full frame, so the working
+peak is roughly twice that plus sort/dedup overhead. The copies run
+sequentially, so nine rules do not mean nine simultaneous copies. pandas is
+already a dependency and makes column renaming, filtering, and zone joins easy
+to iterate on and test. Keeping `raw` untouched preserves replayability.
 
 **Tradeoffs**
 This pulls the full trip table out of Postgres and makes transformation
@@ -143,17 +144,20 @@ rows and fail to reconcile against the raw input.
    counts as the pipeline result.
 
 **Decision**
-Run the rules in this fixed order and log the sequential count for each:
+Run the rejection rules in this fixed order and log the sequential count for each:
 
 1. Missing required fields
 2. Pickup outside September 2026
 3. Dropoff not after pickup
 4. Duration over 12 hours
 5. Non-positive fare
-6. Non-positive distance
-7. Implied speed over 100 mph
-8. High-fare anomaly
-9. Duplicate trip
+6. Implied speed over 100 mph
+7. High-fare anomaly
+8. Duplicate trip
+
+Zero-distance rows are **not rejected**. They are kept and flagged with
+`has_valid_distance = false` after the rejection rules. The flag is reported
+separately from rejected rows.
 
 The transform asserts `raw rows = clean rows + total rejected rows`.
 
@@ -187,7 +191,7 @@ collapses different trips that start in the same zone at the same second.
 2. **Weak natural key** — removes 188,650 rows and destroys legitimate trips.
 3. **Full natural key** — `VendorID + pickup + dropoff + PULocationID +
    DOLocationID + fare_amount + trip_distance + total_amount`; removes 25,349
-   rows before other rules and 24,315 after them.
+   rows before other rules and 25,310 after them.
 4. **Full natural key plus arbitrary row order** — same key, but which copy
    survives is nondeterministic.
 
@@ -282,23 +286,36 @@ staging swap is the next step if concurrent readers or indexes become required.
 
 ---
 
-## D-08: Use profile-derived validity thresholds
+## D-08: Use profile-derived validity thresholds and flag zero-distance trips
 
-**Date:** 2026-11-07
+**Date:** 2026-11-08
 
 **Status:** Accepted
 
 **Context**
 The profile found extreme values that are almost certainly errors, but a flat
-cap on fare or distance would also remove plausible long trips.
+cap on fare or distance would also remove plausible long trips. The hard case was
+zero distance: 144,186 rows reached the old distance rule, and 117,516 of them
+(81.5%) had different pickup and dropoff zones. Their median fare was $26.19,
+higher than the overall $17.70, and their average total was $38.96. These look
+like paid trips with a broken distance reading, not fabricated trips. The old
+rule also removed 1,006 of the 1,809 zone-265 pickups (-56%), far more than the
+overall rejection rate.
+
+Negative fares were also checked by payment type: 8,671 were disputes, 1,518
+were no-charge trips, 3,068 were cash, 873 were credit card, and 60 were Flex
+Fare. Most are adjustments or non-revenue records, so rejecting them is
+defensible.
 
 **Options considered**
 1. **No cleaning** — preserves everything, but leaves impossible timestamps,
-   negative fares, zero distances, and duplicate records in `clean`.
-2. **Flat caps** — easy to explain, but rejects legitimate long airport/out-of-
+   negative fares, and duplicate records in `clean`.
+2. **Reject zero-distance rows** — keeps only distance-valid rows, but
+   undercounts trips and revenue and disproportionately removes zone 265.
+3. **Keep zero-distance rows with a flag** — preserves counts and revenue while
+   letting distance-based metrics exclude them.
+4. **Flat caps** — easy to explain, but rejects legitimate long airport/out-of-
    town trips along with bad rows.
-3. **Profile-derived rules** — reject values that are invalid by construction or
-   implausible relative to the trip, and keep values that are merely unusual.
 
 **Decision**
 Use these rules:
@@ -307,7 +324,8 @@ Use these rules:
 - Dropoff must be strictly after pickup.
 - Duration must be at most 12 hours.
 - `fare_amount` must be greater than 0.
-- `trip_distance` must be greater than 0.
+- Keep `trip_distance <= 0` rows and set `has_valid_distance = false`. Report
+  the flag separately from rejected rows.
 - Implied speed must be at most 100 mph.
 - Reject high-fare anomalies only when `fare_amount > 500` **and**
   `fare_amount / trip_distance > 30`.
@@ -316,14 +334,21 @@ Use these rules:
 - Do not drop sentinel zones.
 
 **Why**
-Zero duration, negative fare, and zero distance are unusable by construction.
-The 12-hour and 100-mph limits are far beyond the observed normal range but
-still retain plausible long trips. The fare-per-mile test distinguishes a $990
-trip of 0.21 miles from a $900 trip of 122 miles. This produced 3,641,416 clean
-rows from 3,876,044 raw rows, with 234,628 rejected under the sequential log.
+Zero distance is unusable for distance-based analysis, but it does not make the
+trip's count or revenue disappear. Flagging preserves both and lets each metric
+choose its denominator. This also avoids the zone-265 distortion caused by the
+old rejection rule. The 12-hour and 100-mph limits are far beyond the observed
+normal range but still retain plausible long trips. The fare-per-mile test
+distinguishes a $990 trip of 0.21 miles from a $900 trip of 122 miles.
+
+After the change, the transform produced **3,784,607** clean rows from
+3,876,044 raw rows: **91,437 rejected** and **143,191 zero-distance rows
+flagged** after deduplication.
 
 **Tradeoffs**
-The thresholds are data-driven judgment calls. A genuine 13-hour trip or a trip
-above 100 mph would be rejected, and the 12-hour limit is stricter than the
-profile's 99.9th percentile. The rules also leave rare high fares that are
-proportional to distance, so downstream analysis should still inspect outliers.
+The 143,191 flagged rows (3.7% of raw) must be excluded from distance and speed
+metrics. A zero-distance trip with a high fare is kept and flagged rather than
+rejected, so it still counts toward revenue. The thresholds remain data-driven
+judgment calls: a genuine 13-hour trip or a trip above 100 mph would be
+rejected, and the 12-hour limit is stricter than the profile's 99.9th
+percentile.

@@ -7,14 +7,13 @@ outside September 2026       rejected         22 rows
 invalid timestamps           rejected     48,202 rows
 invalid duration             rejected        477 rows
 invalid fares                rejected     16,488 rows
-invalid distances            rejected    144,186 rows
 invalid speed                rejected        928 rows
 high fares                   rejected         10 rows
-duplicate trips              rejected     24,315 rows
+duplicate trips              rejected     25,310 rows
 
 Renaming columns...
+Flagged 143,191 zero-distance trips (kept in clean).
 Joining pickup and dropoff zones...
-Writing 3,641,416 rows to clean.trips...
 
 Rejected rows by rule
 --------------------------------------------
@@ -23,14 +22,17 @@ outside September 2026               22
 invalid timestamps               48,202
 invalid duration                    477
 invalid fares                    16,488
-invalid distances               144,186
 invalid speed                       928
 high fares                           10
-duplicate trips                  24,315
+duplicate trips                  25,310
 --------------------------------------------
-total rejected                  234,628
+total rejected                   91,437
+zero-distance flagged           143,191
 raw rows                      3,876,044
-clean rows                    3,641,416
+clean rows                    3,784,607
 Reconciliation passed.
+
+Writing 3,784,607 rows to clean.trips...
+Write verified: 3,784,607 rows in clean.trips.
 
 Transform completed successfully.

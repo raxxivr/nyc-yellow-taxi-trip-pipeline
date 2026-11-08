@@ -13,7 +13,7 @@ Analytics models are planned for M3.
 |---|---|
 | Extract | Downloads the monthly parquet and zone lookup CSV to `data/raw/` |
 | Raw load | Loads both files into Postgres `raw` schema |
-| Transform | Cleans `raw` trips, joins pickup/dropoff zones, rebuilds `clean.trips` |
+| Transform | Cleans `raw` trips, flags zero-distance rows, joins pickup/dropoff zones, rebuilds `clean.trips` |
 | Orchestration | None; scripts run individually |
 
 ## Stack
@@ -58,8 +58,9 @@ Transform the raw tables into `clean.trips`:
 python scripts/transform.py
 ```
 
-The transform logs rejected rows by rule, reconciles raw and clean counts, and
-rebuilds `clean.trips` from scratch so reruns do not create duplicates.
+The transform logs rejected rows by rule, reports zero-distance rows separately,
+reconciles raw and clean counts, and rebuilds `clean.trips` from scratch so
+reruns do not create duplicates.
 
 ## Layout
 
