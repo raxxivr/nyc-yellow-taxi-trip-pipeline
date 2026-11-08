@@ -1,0 +1,16 @@
+Quality checks
+--------------------------------------------
+PASS: source files match raw table rows
+PASS: clean keys have no nulls
+PASS: clean keys are unique
+PASS: fares and distances are in range
+PASS: timestamps, duration, and speed are in range
+PASS: location and payment codes are in range
+PASS: analytics trip counts reconcile to clean.trips
+PASS: analytics table shapes and percentages are valid
+PASS: clean and analytics columns are snake_case
+All quality checks passed.
+
+============================================================
+SUCCESS: ALL PIPELINE STEPS AND QUALITY CHECKS PASSED!
+============================================================

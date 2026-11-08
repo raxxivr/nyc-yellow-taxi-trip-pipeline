@@ -1,0 +1,110 @@
+============================================================
+STARTING NYC YELLOW TAXI DATA PIPELINE
+============================================================
+
+>>> 1. EXTRACT DATA
+Executing: scripts/extract.py
+----------------------------------------
+
+Downloading parquet from https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2026-09.parquet...
+Successfully saved to data/raw\yellow_tripdata_2026-09.parquet
+
+Downloading CSV from https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv...
+Successfully saved to data/raw\taxi_zone_lookup.csv
+
+
+>>> 2. LOAD RAW DATA
+Executing: scripts/load.py
+----------------------------------------
+Reading data/raw/taxi_zone_lookup.csv...
+Loading to Postgres as raw.taxi_zone_lookup...
+raw.taxi_zone_lookup loaded successfully
+
+Reading data/raw/yellow_tripdata_2026-09.parquet...
+Loading to Postgres as raw.yellow_tripdata_2026_09...
+raw.yellow_tripdata_2026_09 loaded successfully
+
+Row check raw.taxi_zone_lookup: expected 265, found 265
+Row check raw.yellow_tripdata_2026_09: expected 3,876,044, found 3,876,044
+
+>>> 3. TRANSFORM & CLEAN DATA
+Executing: scripts/transform.py
+----------------------------------------
+Loading raw tables...
+Loaded 3,876,044 raw trips and 265 zone rows.
+
+Applying cleaning rules...
+missing required fields      rejected          0 rows
+outside September 2026       rejected         22 rows
+invalid timestamps           rejected     48,202 rows
+invalid duration             rejected        477 rows
+invalid fares                rejected     16,488 rows
+invalid speed                rejected        928 rows
+high fares                   rejected         10 rows
+duplicate trips              rejected     25,310 rows
+
+Renaming columns...
+Flagged 143,191 zero-distance trips (kept in clean).
+Joining pickup and dropoff zones...
+
+Rejected rows by rule
+--------------------------------------------
+missing required fields               0
+outside September 2026               22
+invalid timestamps               48,202
+invalid duration                    477
+invalid fares                    16,488
+invalid speed                       928
+high fares                           10
+duplicate trips                  25,310
+--------------------------------------------
+total rejected                   91,437
+zero-distance flagged           143,191
+raw rows                      3,876,044
+clean rows                    3,784,607
+Reconciliation passed.
+
+Writing 3,784,607 rows to clean.trips...
+Write verified: 3,784,607 rows in clean.trips.
+
+Transform completed successfully.
+
+>>> 4. GENERATE ANALYTICS TABLES
+Executing: scripts/run_analytics.py
+----------------------------------------
+Successfully created table: analytics.daily_trips_revenue
+Successfully created table: analytics.top_pickup_zones
+Successfully created table: analytics.avg_tip_by_hour
+Successfully created table: analytics.trips_by_payment_type
+
+All analytics tables built successfully within a single transaction.
+
+Sanity checks
+--------------------------------------------
+PASS: daily has 30 rows
+PASS: daily trips match clean.trips
+PASS: top zones has 10 labeled rows
+PASS: tips cover 24 hours with non-negative averages
+PASS: payment percentages total 100
+PASS: payment trips match clean.trips
+All sanity checks passed.
+
+>>> 5. EXECUTE QUALITY CHECKS
+Executing: scripts/checks.py
+----------------------------------------
+Quality checks
+--------------------------------------------
+PASS: source files match raw table rows
+PASS: clean keys have no nulls
+PASS: clean keys are unique
+PASS: fares and distances are in range
+PASS: timestamps, duration, and speed are in range
+PASS: location and payment codes are in range
+PASS: analytics trip counts reconcile to clean.trips
+PASS: analytics table shapes and percentages are valid
+PASS: clean and analytics columns are snake_case
+All quality checks passed.
+
+============================================================
+SUCCESS: ALL PIPELINE STEPS AND QUALITY CHECKS PASSED!
+============================================================

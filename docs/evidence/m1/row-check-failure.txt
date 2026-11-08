@@ -1,0 +1,14 @@
+Row check raw.taxi_zone_lookup: expected 265, found 265
+Row check raw.yellow_tripdata_2026_09: expected 3,876,045, found 3,876,044
+.\.venv\Scripts\python.exe : Traceback (most recent call last):
+At line:1 char:22
++ ... ONPATH='.'; .\.venv\Scripts\python.exe -c "from scripts.load import v ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+  File "<string>", line 1, in <module>
+  File "C:\Users\burp\OneDrive\Documents\burp\PERSONAL FILES\projects\nyc-yellow-taxi-trip-pipeline\scripts\load.py",
+line 80, in validate_rows
+    raise ValueError(
+ValueError: Row count mismatch for raw.yellow_tripdata_2026_09: expected 3,876,045, found 3,876,044

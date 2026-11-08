@@ -1,0 +1,2 @@
+Row check raw.taxi_zone_lookup: expected 265, found 265
+Row check raw.yellow_tripdata_2026_09: expected 3,876,044, found 3,876,044

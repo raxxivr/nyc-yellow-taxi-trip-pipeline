@@ -1,0 +1,2 @@
+C:\Users\burp\OneDrive\Documents\burp\PERSONAL FILES\projects\nyc-yellow-taxi-trip-pipeline\data\raw\taxi_zone_lookup.csv|1C60F68E37817DAC15979F1250C368D43C08F27A70B3A1BB9784C7BA4D5037A0
+C:\Users\burp\OneDrive\Documents\burp\PERSONAL FILES\projects\nyc-yellow-taxi-trip-pipeline\data\raw\yellow_tripdata_2026-09.parquet|32D8D883E3FB9C0D681F4D47B205AFE0FCB2A4830739673B4DD3BAFBAC9B0086
