@@ -82,3 +82,6 @@ DECISIONS.md          # decision log
 ## Decisions
 
 See [DECISIONS.md](DECISIONS.md) for the reasoning behind the pipeline design.
+
+The raw-data findings that drive the cleaning thresholds are in
+[docs/profile.md](docs/profile.md).
