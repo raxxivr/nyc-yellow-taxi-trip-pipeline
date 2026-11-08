@@ -11,6 +11,14 @@ M1 through M4 are complete. The extract, load, transform, analytics, and quality
 check stages are wired together in `run_pipeline.py`; a fresh-clone run was
 verified end to end.
 
+## Snapshot
+
+![NYC Yellow Taxi pipeline results dashboard](docs/analytics-dashboard.png)
+
+The dashboard summarizes the September 2026 run: clean trip volume, gross
+revenue, daily demand, top pickup zones, payment mix, and the final quality-check
+result.
+
 ## Problem
 
 The TLC publishes monthly yellow-taxi data as a large parquet file plus a small

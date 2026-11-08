@@ -32,6 +32,7 @@ The temporary clone was deleted after verification.
 
 ## Evidence files
 
+- `docs/analytics-dashboard.png` — reviewer snapshot of analytics and checks
 - `run-1.txt`, `run-2.txt` — full pipeline runs
 - `fresh-clone-run.txt` — clean-clone run
 - `quality-checks-run-1.txt`, `quality-checks-run-2.txt`
